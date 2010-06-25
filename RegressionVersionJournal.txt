@@ -1,0 +1,632 @@
+Meeting Niki for regression approach to visible work motivation
+
+#edits_{p_1}{t_1} = #edits_{p_1}{t_0} + \sigma #edits_{p_i}{t_0} + #edits_{t0}
+
+predicting the number of edits at t1 by an editor (i), asking the extent to which edits by others at t0 matters.  Need to control for focal editor at t0, and overall editing amount at t1 (adjusting for night, etc).  Sensitivity analysis over length of t (is the regression robust to this choice, within limits)
+	- question: don't we need to know individual likelihood of working at t1?  How is that accounted for?  is that smoothed out too much by the #edits overall at t0?
+	
+Collapse across all articles, but only allow influence if the person has edited that page before (assume all edited pages are on watchlist).  Could make this stochastic, weighted by frequency on edit (e.g. 1 edit, 10% chance, 2 edits, 40% chance, 5 edits 90% chance)
+	
+
+talk+article_id,  time_period, editor, #edits
+1,0,james,4
+1,1,james,10
+1,0,niki,5
+2,0,james,0
+2,1,james,0
+2,0,niki,0
+2,1,niki,0
+
+time_period, editor, other_edits_t-1, own_edits_t-1, own_edits_t
+1,james,5,4,10
+
+other_edits_t-1 == other people's edits on articles james was active on at t-1.
+ 
+#edits across all Wikipedia at t-1
+time at t-1 (year, month)
+
+--------------------
+2010-03-19 11-55-40-0400
+--------------------
+
+page_pair_id is article + talk page for each article (ie page_type 0 and 1)
+
+1.  Need to establish 'virtual watchlist' for eligibility.
+	An article is on a person's virtual watchlist if they've edited it in the past.
+	table:
+	   virtual_watchlist (this is a single table regardless of sensitivity of time period; can create multiple tables for different watchlist definitions)
+	       person_id, page_pair_id, earliest_edit
+
+for page_set find earliest edit, rev_timestamp of that is t0
+
+  for_each start_time (start at t1 not t0) [rev_timestamped >= curr_start AND rev_timestamp < curr_start + time_period]
+    for_each page_pair
+		   create eligible_editor list (ie lookup on virtual watchlist)
+       for_each eligible_editor
+       
+SELECT COUNT(rev_id) AS own_edit_t_1 FROM revision WHERE page_id IN ($article_id,$talk_id) AND editor_id = $curr_editor_id AND rev_id IN (SELECT rev_id FROM revision WHERE edit_time >= $curr_start AND rev_timestamp < ($curr_start + $time_period))
+
+SELECT COUNT(rev_id) AS own_edit_t_0 FROM revision WHERE page_id IN ($article_id,$talk_id) AND editor_id = $curr_editor_id AND edit_time >= $curr_start AND rev_timestamp < ($curr_start - $time_period)
+
+SELECT COUNT(rev_id) AS other_edit_t_0 FROM revision WHERE page_id IN ($article_id,$talk_id) AND editor_id != $curr_editor_id AND edit_time >= $curr_start AND rev_timestamp < ($curr_start - $time_period)
+
+page_pair_id, start_time, period_length, own_edit_t_1, own_edit_t_0, other_edit_t_0
+
+--------------------
+2010-03-30 14-47-11-0400
+--------------------
+
+getting started
+
+for the project oregon pages, find list of article/talk ids
+calculate virtual watchlist
+
+Start by restricting to one month?  Perhaps create a virtual table for just that month in revisions?
+
+--------------------
+2010-03-30 21-44-42-0400
+--------------------
+
+CREATE TABLE oregon_titles AS (SELECT p.page_title AS page_title
+    FROM templatelinks AS t
+    JOIN page AS p ON (t.tl_from = p.page_id)
+    WHERE (t.tl_title = "WikiProject_Oregon"))
+
+so I made a bunch of intermediate tables that you may or may not need
+[2010-03-30 21:43:17] Jamie Olson: CREATE TABLE oregon_titles AS (SELECT p.page_title AS page_title
+    FROM templatelinks AS t
+    JOIN page AS p ON (t.tl_from = p.page_id)
+    WHERE (t.tl_title = "WikiProject_Oregon"))
+[2010-03-30 21:43:38] Jamie Olson: gets the page_ids in the project
+[2010-03-30 21:43:52] Jamie Olson: CREATE TABLE oregon_articles AS (SELECT p.page_id AS page_id, p.page_title AS page_title, p.page_namespace AS page_namespace
+FROM page AS p
+JOIN oregon_titles AS t ON (t.page_title = p.page_title)
+AND ( p.page_namespace = 0 or p.page_namespace = 1))
+[2010-03-30 21:44:15] Jamie Olson: gets the actual pages that are articles or talk pages
+[2010-03-30 21:44:26] James Howison: cool
+[2010-03-30 21:44:31] Jamie Olson: since an article might be in the project but its talk not
+
+u: hci
+
+p: nshhci5000
+
+--------------------
+2010-03-31 15-35-39-0400
+--------------------
+
+all pages related to project oregon
+expand to include both article and talk pages (page_pair)
+get all edits associated with these, put into a table
+add the rev_epoch_seconds field.
+
+--------------------
+2010-03-31 19-04-52-0400
+--------------------
+ 
+generate a new column page_pair_id, which basically merges talk and edit for Page.  Actually one can do this with page_title, since that is the same for both pages.  but that gives bloody utf8 issues.  better to generate a new id and use that (also better for indexing).
+
+--------------------
+2010-03-31 19-08-27-0400
+--------------------
+
+can one do this in an event focused way, ie for each event extend out a growing window, locate possibly influenced events ....
+
+for_each event
+  select events within period_length time
+  
+--------------------
+2010-04-05 17-11-01-0400
+--------------------
+
+hci-write,hciresearch2.hcii.cs.cmu.edu,hci,nshhci5000,ws20080312
+
+--------------------
+2010-04-05 20-11-10-0400
+--------------------
+
+per event system.
+
+for_each page_pair, sort events by time.
+for_each event
+	locate events which may have been influenced by this event (ie in next time window)
+		- if own event then increment own_edits_t0 and own_edits_t1
+		- if others then increment other_edits_t0
+
+
+1. 7:31 james page1
+2. 7:45 nick page1
+3. 7:50 james page1
+4. 8:05 nick page1
+5. 8:06 nick page1
+6. 8:08 jamie page1
+
+30 minute window
+
+for Event 1. select events on page1 between 8:02 and 8:32 (t1)
+	find events 4,5,6
+	event 4, increment own_edits_t1
+	
+wait, looking backwards model.
+
+for Event 1, select events on page1 between 7:00 and 7:30
+	none
+for Event 2, select events on page1 between 7:00 and 7:30
+3...
+4, select events on page1 between 7:30 and 8 
+	find 1,2,3
+	increment nick_own_edits_t1
+	for 1 increment other_edit_t0
+	for 2 increment nick_own_edit_t0
+	for 3 increment other_edit_t0
+		(how does this get merged with the other nick_t1 events?)
+
+5, select events on page1 between 7:30 and 8 
+	find 1,2,3
+	increment  nick_own_edits_t1
+	for 1, increment other_edit_t0
+	for 2, increment nick_own_edit_t0
+	for 3, increment other_edit_t0
+	
+6, select events on page1 between 7:30 and 8
+  find 1,2,3
+  increment jamie_own_edits_t1
+  for 1, increment other_edit_t0
+  for 2, increment other_edit_t0
+  for 3, increment other_edit_t0
+
+
+hmmm, doesn't this produce an event*event operation? Is that faster than period*event?  yes, probably by an order of magnitude at least.
+
+How to find 'linked' periods? ie windows with events in t0 and t1?
+
+eventtime to bucket (some sort of rounding?)
+2008-04-03 12:31:45
+	if duration is minute
+		2008-04-03 12:31:00 gives start
+  if duration is 5 minutes
+		2008-04-03 12:30:00 gives start
+
+or query
+select period_start from periods where date > period_start and date <= period_end
+
+2008-04-03 13:31:45
+
+--------------------
+2010-04-11 20-32-54-0400
+--------------------
+
+page_pair_id_hash, editor_id, datetime
+
+then create ts for each editor in each page, using sparse-matrix to handle the high number of null periods?
+
+then merge ts for all other editors, the acf with others and self.
+
+how does the virtual watchlist play into this?
+	- non-overlapping timeseries
+	- ie an editor-article time-series only begins when
+
+--------------------
+2010-04-12 14-09-03-0400
+--------------------
+
+#as.POSIXct(strptime(dates,format='%Y%m%d%H%M%S'),tz="GMT")
+
+
+# Sparse, 1 row matrix of 100, where 10:14 are events
+#sparseMatrix(i=rep(1,5),j=10:14,dims=c(1,100)) 
+
+# tt <- seq(10, 20000, 100)
+# x <- zoo(test, structure(tt, class = c("POSIXt", "POSIXct")))
+# aggx <- aggregate(x, time(x) - as.numeric(time(x)) %% 600, sum))
+
+# calculate number of bins
+# duration <- 60 * 60 #* 24 * 365
+# r <- range(page_user_time$rev_datetime)
+# bin_count <- (r[2] - r[1]) / duration
+# 
+# # use hist to do the counting
+# h <- hist(page_user_time$rev_datetime,breaks=bin_count)
+# 
+# df <- data.frame(counts = h$counts, mids = h$mids)
+# 
+# #ts <- zoo(counts,structure(bin_mid, class = c("POSIXt", "POSIXct")))
+# #plot(ts,type="l")
+
+
+--------------------
+2010-04-12 16-55-34-0400
+--------------------
+
+  #print(rows)
+  # skip first period
+  if (rows$mid[1] == min(all_counts$mid)) {
+    lag_1_self_count <- NA
+    lag_1_other_count <- NA
+    #print("Skipping first period")
+  } else {
+    # find lag_1_self_count, if exists
+    target_mid <- rows$mid - DURATION
+    
+    # this is bs
+    lag_1_row <- subset(all_counts,(page_title_hash == rows$page_title_hash[1]))
+    lag_1_row <- subset(all_counts, rev_user_text == rows$rev_user_text[1])
+    lag_1_row <- subset(all_counts, mid == target_mid)
+
+#    print(rows)
+#   print("lag_1_row")
+#    print(lag_1_row)
+    if (nrow(lag_1_row) == 0) {
+      lag_1_self_count <- NA
+      lag_1_other_count <- NA
+    } else {
+      print(lag_1_row)
+      lag_1_self_count <- lag_1_row$self_count
+      lag_1_other_count <- lag_1_row$other_count
+    }
+  }
+  df <- data.frame(self_count = c(rows$self_count), other_count = c(rows$other_count), lag_1_self_count = c(lag_1_self_count), lag_1_other_count = c(lag_1_other_count))
+ # print(df)
+
+--------------------
+2010-04-16 09-53-27-0400
+--------------------
+
+possibly very large page:
+fff2122fadbd96365ff8601a214ab3d2
+
+--------------------
+2010-05-08 13-49-22-0400
+--------------------
+
+Ok, going with the divide to get period number method.
+
+Then generate a sparse-matrix, one per time-period size/page combination?
+This is the equivalent of the hist result.
+
+       pt0, pt1, pt2
+user1,  0,  0,   4
+user2,  0,  4,   3
+
+Counting by period_1800
+
+SELECT page_title_hash, rev_user_text, period_1800, COUNT(*)
+FROM oregon_edits
+GROUP BY page_title_hash, rev_user_text, period_1800
+
+Then move counts into sparse matrix?
+
+			 page_hash, period_num, own_edit
+user1,   page1,       pt0,        0
+user1,   page2,       pt0,        1
+...,      ...,        ...,        0
+
+hmmm, this doesn't end up that sparse, only the edit columns end up sparse (own_edit, other_edit, own_edit_lag, other_edit_lag).  OTOH everything has the same dimensions.  That is still going to be a massive memory hog.  
+
+Could I just write that table out not including the zeros, then load in the zeros for the regression?  Helps a lot, I imagine.  Create a zero for lag somehow?
+
+Could I also do the total period counts in the database?  Should be a variant of the same sorting?
+
+
+What to do about users who weren't on the virtual watchlist at time pt (ie had never edited)?  Handle that later with the self/other stuff?
+
+get list of 'active periods' for a page with a unique select from the period_XXXX column?
+count all edits for that page/period with an SQL query?  Or a 
+
+Don't need to create the colum:
+
+SELECT page_title_hash, rev_user_text, CEILING(rev_datetime / 5000000) as period_no, COUNT(*) as events_in_period
+FROM oregon_edits
+GROUP BY page_title_hash, rev_user_text, period_no
+
+--------------------
+2010-05-09 13-18-43-0400
+--------------------
+
+want a sparse matrix that has as one row the actual values (and an array of the locations)
+and as another row a reference to the array of actual values and an array of locations with -1.
+
+
+0 0 A D 0 0 F
+
+values:  A, D, F
+pos:     2, 3, 7
+lag_pos: 1, 2, 6
+
+(need two of these, one for self and one for other)
+
+(if lag_pos goes negative then remove that value (ie make it 0), that might require a separate value list.)
+
+for page
+  for user
+
+
+rows <- c(1,10)
+columns <- c(1,2)
+values <- c(1,1)
+
+for sparseM:
+
+new("matrix.csr",ra=1:3,ja=1:3,ia=1:4,dimension=as.integer(c(3,3)))
+ra - non-zero values in an array - 1,2,3
+ja - column indices for non-zero - 1,2,3 (ie one value per column)
+ia - row start index (last) - 1,2,3,4
+
+1,1
+2,2
+3,3
+
+1 . .
+. 2 .
+. . 3
+
+1 . . 11
+. 2 . .
+3 . . 31
+
+dimensions=as.integer(c(3,4))  
+ra=as.integer(c(1,11,2,3,31))
+ja=as.integer(c(1,4,2,1,4))
+ia=as.integer(c(1,3,4,6))
+
+new("matrix.csr",ra=ra,ja=ja,ia=ia,dimension=dimensions)
+
+sparseMatrix(i=ja,j=c(1,1,2,3,3),x=ra)
+
+
+1 . . 11
+. . . .
+3 . . 31
+
+dimensions=as.integer(c(3,4))  
+ra=as.integer(c(1,11,3,31))
+ja=as.integer(c(1,4,1,4))
+ia=as.integer(c(1,,3,5))
+
+new("matrix.csr",ra=ra,ja=ja,ia=ia,dimension=dimensions)
+  
+        own_edits, lag_1_own, lag_1_other 
+person1   4            0         4         
+person2   5            0         5   
+person3   2            0         2
+person4   1            0         1
+
+4 . 4
+5 . 5
+2 . 2
+1 . 1
+
+dimensions=as.integer(c(4,3))  
+values=as.integer(c(4,4,5,5,2,2,1,1))
+columnIndex=as.integer(c(1,3,1,3,1,3,1,3))
+rowStarts=as.integer(c(1,3,5,7,9))
+A <- new("matrix.csr",ra=values,ja=columnIndex,ia=rowStarts,dimension=dimensions)
+
+sm <- sparseMatrix(i=c(1,1,2,2,3,3,4,4),j=columnIndex,x=values)
+colnames(sm) <- c("own","other","lag_own")
+
+--------------------
+2010-05-11 17-05-56-0400
+--------------------
+
+# #   for each period
+# 
+# page_periods <- dbGetQuery(conn,
+#     "SELECT page_title_hash, period_no
+#     FROM test_data"
+# )
+# 
+# 
+# 
+# 
+# #print(head(page_period_user_counts))
+# # 
+# # # Expand so that there is an entry for each developer that ever works on the 
+# # # page for each period in which there is work
+# expand_devs_page <- function(rows) {
+#   # ensures that we are ordered by mid (ie time)
+#   print(rows)
+# #     page_title_hash rev_user_text period_no own_edits
+# # 1           page1     follower1         3         2
+# # 2           page1     follower2         3         3
+# # 3           page1        leader         2         3
+# 
+# # need to add 
+# # page1, leader, 3, 0
+# # page1, follower1, 2, 0
+# # page1, follower2, 2, 0
+# 
+# # eventually change this to accomodate the watchlist concept
+# # ie you get carried forward but not backwards.
+# # ok, one backwards and one forwards?  but then lagging method won't work
+# # or least it will need to be altered so that it only does current and last.
+#   df <- ddply(rows,.(period_no),expand_devs_period.progress="none")
+# 
+#   # df <- data.frame(period_no = rows$period_no, lag_1_self = lag_self
+#   #                   # ,lag_1_other = lag_other
+#   #                   )
+#   
+# }
+# 
+# expand_devs_period <- function(rows) {
+#   # ensures that we are ordered by mid (ie time)
+#   print(rows)
+# #     page_title_hash rev_user_text period_no own_edits
+# # 1           page1     follower1         3         2
+# # 2           page1     follower2         3         3
+# # 3           page1        leader         2         3
+# 
+# # need to add 
+# # page1, leader, 3, 0
+# # page1, follower1, 2, 0
+# # page1, follower2, 2, 0
+# 
+# # eventually change this to accomodate the watchlist concept
+# # ie you get carried forward but not backwards.
+# # ok, one backwards and one forwards?  but then lagging method won't work
+# # or least it will need to be altered so that it only does current and last.
+#   df <- ddply(rows,.(period_no),expand_devs_period.progress="none")
+# 
+#   # df <- data.frame(period_no = rows$period_no, lag_1_self = lag_self
+#   #                   # ,lag_1_other = lag_other
+#   #                   )
+#   
+# }
+# 
+# d_ply(page_periods,.(page_title_hash),expand_devs,.progress="none")
+# 
+# # 
+# # 
+# # # # get total counts for page/period from DB, that gives total.
+# # # page_period_totals <- dbGetQuery(conn,
+# # #   paste(
+# # #     "SELECT page_title_hash, CEILING(rev_datetime / ",
+# # #     DURATION,
+# # #     ") as period_no, COUNT(*) as all_edits
+# # #     FROM test_data
+# # #     GROUP BY page_title_hash, period_no"
+# # #     ,sep=""
+# # #   )
+# # # )
+# # # print(head(page_period_totals))
+# # # # page_title_hash, period_no, all_edits
+# # # 
+# # # 
+# # # # calculate other_total and add to page_period_user_counts
+# # # 
+# # # # intermediate - add period_total to page_period_user_counts
+# # # page_period_user_counts <- merge(page_period_user_counts,page_period_totals)
+# # # 
+# # # # add other_total
+# # # # page_period_user_counts$other_edits <- page_period_user_counts$all_edits - page_period_user_counts$own_edits
+# # # 
+# # # print(head(page_period_user_counts))
+# # # 
+# # # # expand to sparse matrix
+# # # # dimensions=as.integer(c(4,3))  
+# # # # values=as.integer(c(4,4,5,5,2,2,1,1))
+# # # # columnIndex=as.integer(c(1,3,1,3,1,3,1,3))
+# # # # rowStarts=as.integer(c(1,3,5,7,9))
+# # # # A <- new("matrix.csr",ra=values,ja=columnIndex,ia=rowStarts,dimension=dimensions)
+# # # # 
+# # # # sm <- sparseMatrix(i=c(1,1,2,2,3,3,4,4),j=columnIndex,x=values)
+# # # # colnames(sm) <- c("own","other","lag_own")
+# # # 
+# # # # create lags
+# # # 
+# # # # called foreach page/user
+# # # # can only be used after zeros are inserted for those
+# # # # who didn't edit in those periods
+# # # # ie after creating the sparse matrix.
+# # # add_lagged_counts <- function(rows) {
+# # #   # ensures that we are ordered by mid (ie time)
+# # #   rows <- rows[ order(rows$period_no) , ]
+# # #   print(rows)
+# # #   
+# # #   lag_other <- c(0,rows$other_edits)
+# # #   lag_other <- lag_other[-length(lag_other)]
+# # #   
+# # #   lag_self <- c(0,rows$own_edits)
+# # #   lag_self <- lag_self[-length(lag_self)]
+# # #   
+# # #   df <- data.frame(period_no = rows$period_no, lag_1_self = lag_self
+# # #                    # ,lag_1_other = lag_other
+# # #                    )
+# # # }
+# # # 
+# # # lagged_counts <- ddply(page_period_user_counts,.(page_title_hash,rev_user_text),add_lagged_counts,.progress="none")
+# # # 
+# # # with_lags <- merge(page_period_user_counts,lagged_counts)
+# # # 
+# # # print(with_lags)
+
+307,388
+
+
+2721.56
+
+ok, so we have really 
+
+do 10000 times:
+
+sample 10 from 1:100 twice without replacement
+
+calculate percentage overlapping:
+convert each sample to T/F for 100 (ie 2, 4 becomes F, T, F, T, F, ...)
+
+count occurrences of:
+
+PassiveToActive  0 to A / 0 to B   F,F -> F,T | T,F           
+SelfToSelf       A to A / B to B   F,T -> F,T | T,F -> T,F    
+SelfToOther      A to B / B to A   F,T -> T,F | T,F -> F,T    
+ActiveToPassive  A to 0 / B to 0   T,F | F,T -> F,F           
+PassiveToPassive 0 to 0            F,F -> F,F                 
+
+T,T -> T,T  T -> T
+T,T -> T,F  T -> T
+T,T -> F,T  T -> T
+T,T -> F,F  T -> F
+
+for (i in 1:99) {
+  myCategorize(Aevents[i],Bevents[i],Aevents[i+1],Bevents[i+1])
+}
+
+myCategorize <- function(a1,b1,a2,b2) {
+	if (a1 && b1) {
+		if (a2 || b2) {
+		  return "" 
+		} else {
+		  
+		}
+	} elsif (a1 || b1) {
+	
+	} else { # (!a1 && !b2)
+	
+	}
+
+}
+
+T F F F F T F F F T
+F T F F F F F T F F
+
+1. T,F -> F,T SelfToOther
+2. F,T -> F,F ActiveToPassive
+3. F,F -> F,F PassiveToPassive
+4. F,F -> F,F PassiveToPassive
+5. F,F -> T,F PassiveToActive
+6. T,F -> F,F ActiveToPassive
+7. F,F -> F,T PassiveToActive
+8. F,T -> F,F ActiveToPassive
+9. F,F -> F,T PassiveToActive
+
+
+474 2923
+424 0633
+
+315 488 4100
+
+81
+
+--------------------
+2010-06-22 17-24-20-0400
+--------------------
+
+Adding back in all zeros.
+
+Working in OrganizeData.rb
+
+Select all periods for that page.  Find max and min.  create list of zero periods.  For each watchlisted editor set everything to zero (self, other.)
+
+watch_list.each do |curr_dev| 
+	if this is a zero period then just skip counting and other counting queries and set all values to zero.
+
+hmmm, maybe the easiest thing to do is leave everything the same, but rather than distinct period_no for page query, use min ... max
+
+if no watchlist:
+
+setup a row for each period, perhaps in a mass statement.  The existing "one back, one forward" update should adjust the lagging?
+
+1.  need a row for each zero period for each person on watchlist; not clear how to handle that.
+
+ignore the lagging in the SQL, just do the counts for periods.
+
+build the zero frame inc watchlist first?  then do counts and lag updates?

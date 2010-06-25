@@ -1,0 +1,166 @@
+\documentclass{article} 
+\usepackage{Sweave}
+
+\begin{document}
+
+<<echo=false, results=hide>>=
+library(ggplot2)
+library(RMySQL)
+#library(foreach)
+library(xtable)
+config <- read.csv("/Users/james/Documents/University/CMU/Projects/VisibleWorkMotivation/RegressionVersion/VisibleMotivationRegression-userpass",stringsAsFactors=FALSE)
+login <- config[2,]
+conn <- dbConnect(MySQL(),user=login$username,password=login$password,dbname=login$database,host=login$host)
+
+min1 = 60
+min10 = 60 * 10
+min30 = min1 * 30
+hour = min1 * 60
+two_hour = hour * 2
+day =  hour * 24
+approxmonth = day * 30
+approxyear = day * 365
+
+#durations <- c(min1, min10, min30, hour, two_hour, day)
+
+process_period <- function(period_counts) {
+
+  
+	data_summary <- summary(period_counts[4:7])
+	print(xtable(data_summary))
+ # period_countsM <- melt(period_counts,id=1:3)  
+ # plot(corr(period_counts))
+      
+  # run the regression
+  model <- lm(own_edits ~ lag_1_other_edits + lag_1_own_edits + all_wiki_period_total,period_counts)
+  print(xtable(model))
+}
+
+
+@
+
+\section{Period Length 10 Minutes}	
+<<echo=false, results=tex>>= 
+period_counts <- dbGetQuery(conn,paste(sep="","SELECT *
+      FROM page_period_counts_",min10))
+process_period(period_counts)
+@
+
+\begin{figure} 
+\begin{center} 
+<<echo=false, results=tex,fig=true,height=2>>= 
+  period_counts_m <- melt(period_counts,id=1:3)
+  p <- ggplot(period_counts_m,aes(x=value))
+  #p + geom_histogram(binwidth=1) + facet_grid(.~variable)
+  p <- p + geom_histogram(binwidth=1) + scale_y_log10() + facet_grid(.~variable,scales="free_x")
+  print(p)
+@
+\end{center} 
+\caption{Regression variables with log scales, Period Length 10 minutes} 
+\label{fig:one} 
+\end{figure}
+
+\clearpage
+\section{Period Length 30 Minutes}	
+<<echo=false, results=tex>>= 
+period_counts <- dbGetQuery(conn,paste(sep="","SELECT *
+      FROM page_period_counts_",min30))
+process_period(period_counts)
+@
+
+\begin{figure} 
+\begin{center} 
+<<echo=false, results=tex,fig=true,height=2>>= 
+  period_counts_m <- melt(period_counts,id=1:3)
+  p <- ggplot(period_counts_m,aes(x=value))
+  #p + geom_histogram(binwidth=1) + facet_grid(.~variable)
+  p <- p + geom_histogram(binwidth=1) + scale_y_log10() + facet_grid(.~variable,scales="free_x")
+  print(p)
+@
+\end{center} 
+\caption{Regression variables with log scales, Period Length 30 minutes} 
+\label{fig:one} 
+\end{figure}
+
+\clearpage
+\section{Period Length 60 Minutes}	
+<<echo=false, results=tex>>= 
+period_counts <- dbGetQuery(conn,paste(sep="","SELECT *
+      FROM page_period_counts_",hour))
+process_period(period_counts)
+@
+
+\begin{figure} 
+\begin{center} 
+<<echo=false, results=tex,fig=true,height=2>>= 
+  period_counts_m <- melt(period_counts,id=1:3)
+  p <- ggplot(period_counts_m,aes(x=value))
+  #p + geom_histogram(binwidth=1) + facet_grid(.~variable)
+  p <- p + geom_histogram(binwidth=1) + scale_y_log10() + facet_grid(.~variable,scales="free_x")
+  print(p)
+@
+\end{center} 
+\caption{Regression variables with log scales, Period Length 60 minutes} 
+\label{fig:one} 
+\end{figure}
+
+\clearpage
+\section{Period Length 2 hours}	
+<<echo=false, results=tex>>= 
+period_counts <- dbGetQuery(conn,paste(sep="","SELECT *
+      FROM page_period_counts_",two_hour))
+process_period(period_counts)
+@
+
+\begin{figure} 
+\begin{center} 
+<<echo=false, results=tex,fig=true,height=2>>= 
+  period_counts_m <- melt(period_counts,id=1:3)
+  p <- ggplot(period_counts_m,aes(x=value))
+  #p + geom_histogram(binwidth=1) + facet_grid(.~variable)
+  p <- p + geom_histogram(binwidth=1) + scale_y_log10() + facet_grid(.~variable,scales="free_x")
+  print(p)
+@
+\end{center} 
+\caption{Regression variables with log scales, Period Length 2 hours} 
+\label{fig:one} 
+\end{figure}
+
+\clearpage
+\section{Period Length 1 day}	
+<<echo=false, results=tex>>= 
+period_counts <- dbGetQuery(conn,paste(sep="","SELECT *
+      FROM page_period_counts_",day))
+process_period(period_counts)
+@
+
+\begin{figure} 
+\begin{center} 
+<<echo=false, results=tex,fig=true,height=2>>= 
+  period_counts_m <- melt(period_counts,id=1:3)
+  p <- ggplot(period_counts_m,aes(x=value))
+  #p + geom_histogram(binwidth=1) + facet_grid(.~variable)
+  p <- p + geom_histogram(binwidth=1) + scale_y_log10() + facet_grid(.~variable,scales="free_x")
+  print(p)
+@
+\end{center} 
+\caption{Regression variables with log scales, Period Length 1 day} 
+\label{fig:one} 
+\end{figure}
+
+
+% \begin{figure} 
+% \begin{center} 
+% <<label=fig1,fig=TRUE,echo=FALSE>>= 
+% hist(Data$Participant)
+% @ 
+% \end{center} 
+% \caption{Scatter Plot with Regression Line} 
+% \label{fig:one} 
+% \end{figure}
+% @
+
+
+
+
+\end{document}
